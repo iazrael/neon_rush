@@ -1,46 +1,64 @@
-
 export enum GemType {
-  RED = 'RED',
-  BLUE = 'BLUE',
-  GREEN = 'GREEN',
-  YELLOW = 'YELLOW',
-  PURPLE = 'PURPLE',
-  ORANGE = 'ORANGE',
-  DIAMOND = 'DIAMOND',
-  STAR = 'STAR',
-  RAINBOW = 'RAINBOW',
+  RED = 0,    // Bear
+  ORANGE = 1, // Fox
+  YELLOW = 2, // Cat
+  GREEN = 3,  // Frog
+  BLUE = 4,   // Whale
+  PURPLE = 5, // Octopus
+  WHITE = 6,  // Used for Rainbow
+  EMPTY = -1
 }
 
-export type SpecialType = 'NONE' | 'ROW_BLAST' | 'COL_BLAST' | 'AREA_BLAST' | 'RAINBOW';
+export enum SpecialType {
+  NONE = 'NONE',
+  ROW_BLAST = 'ROW_BLAST',
+  COL_BLAST = 'COL_BLAST',
+  AREA_BLAST = 'AREA_BLAST', // Bomb
+  RAINBOW = 'RAINBOW'
+}
 
-export type CellStatus = 'IDLE' | 'SWAPPING' | 'MATCHED' | 'DROPPING' | 'EMPTY' | 'CREATED';
+export enum GameState {
+  MENU = 'MENU',
+  PLAYING = 'PLAYING',
+  GAME_OVER = 'GAME_OVER',
+  LEVEL_COMPLETE = 'LEVEL_COMPLETE'
+}
 
 export interface Position {
-  row: number;
-  col: number;
+  x: number;
+  y: number;
 }
 
-export interface Cell {
-  id: string;
+export interface Vector2 {
+  x: number;
+  y: number;
+}
+
+export interface GemComponent {
+  id: number;
+  gridX: number;
+  gridY: number;
+  visualX: number; // For smooth animation
+  visualY: number;
   type: GemType;
   special: SpecialType;
-  status: CellStatus;
-  row: number; // Logical row
-  col: number; // Logical col
-  visualRow: number; // For animation
-  visualCol: number; // For animation
-  isBonus?: boolean;
+  scale: number;
+  opacity: number;
+  isMatched: boolean;
+  velocity: number;
+  shakeOffset: Vector2;
 }
 
 export interface Particle {
   id: number;
   x: number;
   y: number;
-  color: string;
-  angle: number;
-  speed: number;
+  vx: number;
+  vy: number;
   life: number;
-  size?: number;
+  maxLife: number;
+  color: string;
+  size: number;
 }
 
 export interface FloatingText {
@@ -49,30 +67,13 @@ export interface FloatingText {
   y: number;
   text: string;
   life: number;
+  color: string;
+  scale: number;
 }
 
 export interface LevelConfig {
   level: number;
   targetScore: number;
-  moves: number; // Limit on number of swaps
-  timeLimit?: number; // seconds, optional
-  description: string;
+  moves: number;
+  gemTypes: number; // Difficulty: number of colors
 }
-
-export type ItemType = 'BOMB' | 'REFRESH';
-
-export type GamePhase = 'START' | 'PLAYING' | 'LEVEL_COMPLETE' | 'GAME_OVER';
-
-export const GRID_ROWS = 8;
-export const GRID_COLS = 8;
-export const GEM_TYPES_ARRAY = [
-  GemType.RED,
-  GemType.BLUE,
-  GemType.GREEN,
-  GemType.YELLOW,
-  GemType.PURPLE,
-  GemType.ORANGE,
-  GemType.DIAMOND,
-  GemType.STAR,
-  GemType.RAINBOW
-];

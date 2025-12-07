@@ -1,5 +1,5 @@
 {
-  "name": "Neon Match-3 (QQ Style)",
-  "description": "A high-performance, mobile-responsive Match-3 game featuring swipe gestures, particle effects, synthesized sound effects, and a neon cyberpunk aesthetic.",
+  "name": "Neon Gem Rush",
+  "description": "A high-performance, cyberpunk-styled Match-3 game featuring an ECS engine, canvas rendering, special combo mechanics, and synthesized audio.",
   "requestFramePermissions": []
 }

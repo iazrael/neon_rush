@@ -1,0 +1,21 @@
+ @import "tailwindcss";
+
+
+ body {
+     background-color: #0f172a;
+     color: white;
+     overscroll-behavior: none;
+     touch-action: none;
+     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+ }
+
+ /* Prevent text selection */
+ .no-select {
+     user-select: none;
+     -webkit-user-select: none;
+ }
+
+ /* Custom scrollbar hide */
+ ::-webkit-scrollbar {
+     display: none;
+ }

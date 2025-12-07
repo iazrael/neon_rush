@@ -1,158 +1,145 @@
-
-// A simple synthesizer to avoid external asset dependencies
 class AudioService {
   private ctx: AudioContext | null = null;
-  private gainNode: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private enabled: boolean = false;
 
   constructor() {
-    // Lazy init on first interaction
-  }
-
-  private init() {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      this.gainNode = this.ctx.createGain();
-      this.gainNode.connect(this.ctx.destination);
+    try {
+      // Defer initialization until interaction
+    } catch (e) {
+      console.error("Web Audio API not supported");
     }
   }
 
-  public resume() {
-    this.init();
-    if (this.ctx?.state === 'suspended') {
-      this.ctx.resume();
-    }
+  public init() {
+    if (this.ctx) return;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    this.ctx = new AudioContextClass();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = 0.3; // Global volume
+    this.masterGain.connect(this.ctx.destination);
+    this.enabled = true;
   }
 
   public playSelect() {
-    this.playTone(800, 'sine', 0.1);
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.1);
+    
+    gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.1);
   }
 
   public playSwap() {
-    this.playTone(600, 'triangle', 0.15, 0, 0.05);
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(600, this.ctx.currentTime + 0.2);
+    
+    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.2);
   }
 
   public playMatch(combo: number) {
-    const baseFreq = 400 + (combo * 50);
-    // Play a chord-like sound
-    this.playTone(baseFreq, 'sine', 0.3);
-    this.playTone(baseFreq * 1.5, 'sine', 0.3, 0.05);
-    this.playTone(baseFreq * 2, 'sine', 0.3, 0.1);
-  }
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // Pitch rises with combo
+    const baseFreq = 440 + (combo * 100);
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 2, this.ctx.currentTime + 0.2);
+    
+    gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
 
-  public playInvalid() {
-    this.playTone(200, 'sawtooth', 0.2);
-    this.playTone(150, 'sawtooth', 0.2, 0.1);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.3);
   }
 
   public playExplosion() {
-    if (!this.ctx || !this.gainNode) {
-        this.init();
-    }
-    if (!this.ctx || !this.gainNode) return;
-
-    const bufferSize = this.ctx.sampleRate * 0.5; // 0.5 seconds
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const bufferSize = this.ctx.sampleRate * 0.5; // 0.5 sec
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    
-    // White noise
+
     for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
+      data[i] = Math.random() * 2 - 1;
     }
 
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
-    
-    const noiseGain = this.ctx.createGain();
+
     const filter = this.ctx.createBiquadFilter();
-    
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(1000, this.ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4);
+    filter.frequency.value = 1000;
+    filter.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.5);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
 
     noise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(this.gainNode);
-    
-    noiseGain.gain.setValueAtTime(0.5, this.ctx.currentTime);
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
-    
+    filter.connect(gain);
+    gain.connect(this.masterGain);
     noise.start();
   }
 
-  public playReshuffle() {
-    this.playTone(300, 'sine', 0.5, 0, 800);
-    this.playTone(305, 'sine', 0.5, 0.05, 805);
-  }
-
-  public playLevelUp() {
-     if (!this.ctx || !this.gainNode) { this.init(); }
-     if (!this.ctx || !this.gainNode) return;
-
-     // Play a joyful C Major Arpeggio: C5 - E5 - G5 - C6
-     const now = this.ctx.currentTime;
-     const notes = [523.25, 659.25, 783.99, 1046.50];
-     
-     notes.forEach((freq, index) => {
-         const osc = this.ctx!.createOscillator();
-         const gain = this.ctx!.createGain();
-         
-         osc.type = 'triangle'; // Brighter sound
-         osc.frequency.setValueAtTime(freq, now + index * 0.1);
-         
-         osc.connect(gain);
-         gain.connect(this.gainNode!);
-         
-         // Envelope
-         gain.gain.setValueAtTime(0, now + index * 0.1);
-         gain.gain.linearRampToValueAtTime(0.2, now + index * 0.1 + 0.05);
-         gain.gain.exponentialRampToValueAtTime(0.01, now + index * 0.1 + 0.4);
-         
-         osc.start(now + index * 0.1);
-         osc.stop(now + index * 0.1 + 0.5);
-     });
-     
-     // Add a sparkly sweep
-     const sweepOsc = this.ctx.createOscillator();
-     const sweepGain = this.ctx.createGain();
-     sweepOsc.type = 'sine';
-     sweepOsc.frequency.setValueAtTime(800, now);
-     sweepOsc.frequency.exponentialRampToValueAtTime(2000, now + 0.5);
-     
-     sweepOsc.connect(sweepGain);
-     sweepGain.connect(this.gainNode);
-     
-     sweepGain.gain.setValueAtTime(0.05, now);
-     sweepGain.gain.linearRampToValueAtTime(0, now + 0.5);
-     
-     sweepOsc.start(now);
-     sweepOsc.stop(now + 0.5);
-  }
-
-  private playTone(freq: number, type: OscillatorType, duration: number, delay = 0, slideTo?: number) {
-    if (!this.ctx || !this.gainNode) {
-        this.init();
-    }
-    if (!this.ctx || !this.gainNode) return;
-
+  public playInvalid() {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
+    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.3);
+    
+    gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
 
-    osc.type = type;
     osc.connect(gain);
-    gain.connect(this.gainNode);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.3);
+  }
 
-    const now = this.ctx.currentTime + delay;
-    osc.frequency.setValueAtTime(freq, now);
-    if (slideTo) {
-       osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
-    }
-
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-
-    osc.start(now);
-    osc.stop(now + duration + 0.1);
+  public playWin() {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    
+    [0, 0.2, 0.4].forEach((delay, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 523.25 + (i * 100); // C5 triad-ish
+      gain.gain.setValueAtTime(0.3, now + delay);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.6);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.6);
+    });
   }
 }
 
