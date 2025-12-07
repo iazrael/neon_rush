@@ -1,7 +1,7 @@
 import { GameEngine } from '../GameEngine';
 import { GemComponent, GemType, SpecialType } from '../../types';
 import { GRID_ROWS, GRID_COLS, GEM_SIZE, COMBO_TIME_LIMIT, LEVELS } from '../../constants';
-import { audioService } from '../../services/audioService2';
+import { audioService } from '../../services/AudioService';
 
 export class MatchSystem {
   private engine: GameEngine;
