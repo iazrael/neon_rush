@@ -1,3 +1,4 @@
+
 export enum GemType {
   RED = 0,    // Bear
   ORANGE = 1, // Fox
@@ -61,14 +62,19 @@ export interface Particle {
   size: number;
 }
 
+export type FloatingTextStyle = 'NORMAL' | 'COMBO' | 'CRITICAL';
+
 export interface FloatingText {
   id: number;
   x: number;
   y: number;
   text: string;
   life: number;
+  maxLife: number;
   color: string;
   scale: number;
+  velocity: Vector2;
+  style: FloatingTextStyle;
 }
 
 export interface LevelConfig {

@@ -1,3 +1,4 @@
+
 import { GameEngine } from '../GameEngine';
 import { GEM_SIZE, GRID_COLS, GRID_ROWS } from '../../constants';
 import { audioService } from '../../services/AudioService';
@@ -28,6 +29,19 @@ export class InputSystem {
 
     if (type === 'start') {
         if (isInside) {
+            // Check for Bomb Item Usage
+            if (this.engine.interactionMode === 'ITEM_BOMB') {
+                const gemId = this.engine.grid[gy][gx];
+                if (this.engine.items.bombs > 0) {
+                    this.engine.items.bombs--;
+                    this.engine.matchSystem.useBombItem(gemId);
+                    // Reset mode after use
+                    this.engine.setInteractionMode('NORMAL');
+                }
+                return;
+            }
+
+            // Normal Interaction
             const gemId = this.engine.grid[gy][gx];
             this.engine.selectedGemId = gemId;
             // Record start position for Swipe detection
@@ -40,6 +54,9 @@ export class InputSystem {
             this.engine.selectedGemId = null;
         }
     } else if (type === 'move') {
+        // Skip swipe detection if using item
+        if (this.engine.interactionMode !== 'NORMAL') return;
+
         if (this.isDragging && this.engine.selectedGemId !== null) {
             const dx = x - this.dragStartX;
             const dy = y - this.dragStartY;
@@ -77,6 +94,8 @@ export class InputSystem {
             }
         }
     } else if (type === 'end') {
+      if (this.engine.interactionMode !== 'NORMAL') return;
+
       // Check for Tap (Manual Activation of Special Gems)
       if (this.isDragging && this.engine.selectedGemId !== null) {
           const duration = Date.now() - this.dragStartTime;

@@ -21,6 +21,25 @@ class AudioService {
     this.enabled = true;
   }
 
+  public playUiClick() {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // Crisp click sound
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.1);
+    
+    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.1);
+  }
+
   public playSelect() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     const osc = this.ctx.createOscillator();

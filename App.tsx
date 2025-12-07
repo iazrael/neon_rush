@@ -18,6 +18,10 @@ const CloseIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 );
 
+const BombIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 8 0"/><path d="m12 8 0 8"/><path d="m4.93 4.93 14.14 14.14"/><path d="m14.07 4.93-4.14 4.14"/><path d="m14 10-4 4"/></svg> // Simplified bomb representation
+);
+
 type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
 
 const App: React.FC = () => {
@@ -34,15 +38,21 @@ const App: React.FC = () => {
   const [difficulty, setDifficulty] = useState<Difficulty>('NORMAL');
   const [showInstructions, setShowInstructions] = useState(false);
 
+  // Inventory States
+  const [items, setItems] = useState({ bombs: 3, reshuffles: 3 });
+  const [interactionMode, setInteractionMode] = useState<'NORMAL' | 'ITEM_BOMB'>('NORMAL');
+
   // Bind Engine Callbacks
   useEffect(() => {
     const engine = engineRef.current;
     
-    engine.onScoreUpdate = (s, m, c, ct) => {
+    engine.onScoreUpdate = (s, m, c, ct, i) => {
       setScore(s);
       setMoves(m);
       setCombo(c);
       setComboTimer(ct);
+      setItems(i);
+      setInteractionMode(engine.interactionMode);
     };
 
     engine.onGameEvent = (event) => {
@@ -53,11 +63,18 @@ const App: React.FC = () => {
         setMessage('No Moves Left!');
         setGameState(GameState.GAME_OVER);
       } else if (event === 'reshuffle') {
-          setMessage('No Moves! Reshuffling...');
+          setMessage('Reshuffling...');
           setTimeout(() => setMessage(null), 2000);
+      } else if (event === 'multi_match') {
+          // Additional effects handled by engine, but could trigger React UI flash here
       }
     };
   }, []);
+
+  const playUiSound = () => {
+    audioService.init(); // Ensure audio context is ready on interaction
+    audioService.playUiClick();
+  };
 
   const getDifficultyConfig = useCallback((baseConfig: typeof LEVELS[0]) => {
       let moveMult = 1;
@@ -79,11 +96,11 @@ const App: React.FC = () => {
   }, [difficulty]);
 
   const startGame = useCallback(() => {
-    audioService.init();
     const config = getDifficultyConfig(LEVELS[currentLevelIdx]);
     engineRef.current.startLevel(config);
     setScore(0);
     setMoves(config.moves);
+    setItems({ bombs: 3, reshuffles: 3 });
     setGameState(GameState.PLAYING);
     setMessage(null);
   }, [currentLevelIdx, getDifficultyConfig]);
@@ -91,12 +108,12 @@ const App: React.FC = () => {
   const nextLevel = () => {
       if (currentLevelIdx < LEVELS.length - 1) {
           setCurrentLevelIdx(prev => prev + 1);
-          // Wait for state update is tricky in hooks, so we calculate next config directly
           const nextIdx = currentLevelIdx + 1;
           const config = getDifficultyConfig(LEVELS[nextIdx]);
           engineRef.current.startLevel(config);
           setScore(0);
           setMoves(config.moves);
+          setItems({ bombs: 3, reshuffles: 3 });
           setGameState(GameState.PLAYING);
           setMessage(null);
       } else {
@@ -108,6 +125,25 @@ const App: React.FC = () => {
 
   const restartLevel = () => {
       startGame();
+  };
+
+  // --- ITEM HANDLERS ---
+  const toggleBombMode = () => {
+      playUiSound();
+      if (interactionMode === 'ITEM_BOMB') {
+          engineRef.current.setInteractionMode('NORMAL');
+      } else {
+          engineRef.current.setInteractionMode('ITEM_BOMB');
+          setMessage("Tap a Gem to Explode!");
+          setTimeout(() => setMessage(null), 3000);
+      }
+  };
+
+  const useReshuffle = () => {
+      playUiSound();
+      if (items.reshuffles > 0) {
+          engineRef.current.useReshuffleItem();
+      }
   };
 
   return (
@@ -142,13 +178,14 @@ const App: React.FC = () => {
 
       {/* Target Info Bar */}
       {gameState === GameState.PLAYING && (
-          <div className="bg-slate-800/50 backdrop-blur text-center py-1 text-xs text-slate-300 border-b border-slate-700/50">
-              Level {LEVELS[currentLevelIdx].level} ({difficulty}) • Target: {getDifficultyConfig(LEVELS[currentLevelIdx]).targetScore}
+          <div className="bg-slate-800/50 backdrop-blur text-center py-1 text-xs text-slate-300 border-b border-slate-700/50 flex justify-between px-4">
+              <span>Level {LEVELS[currentLevelIdx].level} ({difficulty})</span>
+              <span>Target: {getDifficultyConfig(LEVELS[currentLevelIdx]).targetScore}</span>
           </div>
       )}
 
       {/* Game Area */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative cursor-crosshair">
         <GameCanvas engine={engineRef.current} />
         
         {/* Floating Message Overlay */}
@@ -157,6 +194,37 @@ const App: React.FC = () => {
                 <span className="inline-block px-6 py-2 bg-black/60 backdrop-blur rounded-full text-white font-bold animate-bounce border border-white/20">
                     {message}
                 </span>
+            </div>
+        )}
+
+        {/* --- ITEMS BAR (Bottom) --- */}
+        {gameState === GameState.PLAYING && (
+            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-6 pointer-events-auto pb-safe">
+                <button 
+                    onClick={toggleBombMode}
+                    className={`flex flex-col items-center gap-1 transition-transform active:scale-95 ${items.bombs === 0 ? 'opacity-40 grayscale' : ''}`}
+                    disabled={items.bombs === 0}
+                >
+                    <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 shadow-lg transition-all ${
+                        interactionMode === 'ITEM_BOMB' 
+                        ? 'bg-red-600 border-white scale-110 animate-pulse' 
+                        : 'bg-slate-800 border-slate-600 hover:border-red-400'
+                    }`}>
+                         <span className="text-2xl">💣</span>
+                    </div>
+                    <span className="text-xs font-bold bg-slate-900 px-2 rounded-full border border-slate-700">{items.bombs}</span>
+                </button>
+
+                <button 
+                    onClick={useReshuffle}
+                    className={`flex flex-col items-center gap-1 transition-transform active:scale-95 ${items.reshuffles === 0 ? 'opacity-40 grayscale' : ''}`}
+                    disabled={items.reshuffles === 0}
+                >
+                    <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center border-2 border-slate-600 shadow-lg hover:border-blue-400 transition-colors">
+                         <RefreshIcon />
+                    </div>
+                    <span className="text-xs font-bold bg-slate-900 px-2 rounded-full border border-slate-700">{items.reshuffles}</span>
+                </button>
             </div>
         )}
       </div>
@@ -182,7 +250,7 @@ const App: React.FC = () => {
                 {(['EASY', 'NORMAL', 'HARD'] as Difficulty[]).map((d) => (
                     <button
                         key={d}
-                        onClick={() => setDifficulty(d)}
+                        onClick={() => { playUiSound(); setDifficulty(d); }}
                         className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
                             difficulty === d 
                             ? 'bg-slate-700 text-cyan-400 shadow-md' 
@@ -195,14 +263,14 @@ const App: React.FC = () => {
             </div>
 
             <button 
-              onClick={startGame}
+              onClick={() => { playUiSound(); startGame(); }}
               className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl text-xl font-bold text-white shadow-[0_0_20px_rgba(8,145,178,0.4)] hover:scale-105 active:scale-95 transition-all border border-cyan-400/30 mb-4"
             >
               开始游戏 (START)
             </button>
             
             <button
-                onClick={() => setShowInstructions(true)}
+                onClick={() => { playUiSound(); setShowInstructions(true); }}
                 className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm py-2"
             >
                 <InfoIcon /> 游戏玩法说明
@@ -219,7 +287,7 @@ const App: React.FC = () => {
                       <h3 className="text-xl font-bold text-cyan-400 flex items-center gap-2">
                           <InfoIcon /> 游戏指南
                       </h3>
-                      <button onClick={() => setShowInstructions(false)} className="text-slate-400 hover:text-white p-2">
+                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="text-slate-400 hover:text-white p-2">
                           <CloseIcon />
                       </button>
                   </div>
@@ -229,6 +297,20 @@ const App: React.FC = () => {
                           <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-cyan-500 pl-3">基础玩法</h4>
                           <p className="text-sm text-slate-400 leading-relaxed">
                               滑动手指交换相邻的宝石。当 <span className="text-white font-bold">3个或以上</span> 同色宝石连成一直线（横向或纵向）时，它们将被消除并得分。
+                          </p>
+                      </section>
+                      <section>
+                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-yellow-500 pl-3">双组奖励</h4>
+                          <p className="text-sm text-slate-400 leading-relaxed">
+                              一次交换如果造成 <span className="text-white font-bold">2组或以上</span> 消除，将触发 "MULTI-MATCH" 奖励，得分翻倍！
+                          </p>
+                      </section>
+                      <section>
+                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-red-500 pl-3">强力道具</h4>
+                          <p className="text-sm text-slate-400 leading-relaxed">
+                              底部栏可以使用限量道具：<br/>
+                              💣 <b>定点炸弹</b>：点击激活后，再次点击棋盘任意位置，炸毁周围区域。<br/>
+                              🔄 <b>重新洗牌</b>：当局面僵持时，打乱所有宝石位置。
                           </p>
                       </section>
 
@@ -260,22 +342,10 @@ const App: React.FC = () => {
                               </div>
                           </div>
                       </section>
-
-                      <section>
-                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-green-500 pl-3">强力组合技</h4>
-                          <p className="text-sm text-slate-400 leading-relaxed mb-2">
-                              试着将两个特殊宝石交换位置，触发超级连锁反应！
-                          </p>
-                          <ul className="text-xs text-slate-500 list-disc list-inside space-y-1">
-                              <li>炸弹 + 炸弹 = 超大范围爆炸</li>
-                              <li>直线 + 直线 = 十字消除</li>
-                              <li>彩虹 + 任何宝石 = 强力清场</li>
-                          </ul>
-                      </section>
                   </div>
                   
                   <div className="p-4 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl">
-                      <button onClick={() => setShowInstructions(false)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold transition-colors">
+                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold transition-colors">
                           明白了 (Got it)
                       </button>
                   </div>
@@ -295,13 +365,13 @@ const App: React.FC = () => {
           </div>
 
           <button 
-            onClick={restartLevel}
+            onClick={() => { playUiSound(); restartLevel(); }}
             className="flex items-center gap-2 px-8 py-4 bg-white text-red-900 rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 shadow-xl"
           >
             <RefreshIcon /> 再试一次 (Retry)
           </button>
           
-          <button onClick={() => setGameState(GameState.MENU)} className="mt-4 text-slate-400 text-sm underline">
+          <button onClick={() => { playUiSound(); setGameState(GameState.MENU); }} className="mt-4 text-slate-400 text-sm underline">
               返回主菜单
           </button>
         </div>
@@ -320,7 +390,7 @@ const App: React.FC = () => {
           </div>
 
           <button 
-            onClick={nextLevel}
+            onClick={() => { playUiSound(); nextLevel(); }}
             className="px-12 py-4 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl text-xl font-bold shadow-[0_0_20px_rgba(16,185,129,0.5)] hover:scale-105 active:scale-95 transition-transform"
           >
             下一关 (Next Level)

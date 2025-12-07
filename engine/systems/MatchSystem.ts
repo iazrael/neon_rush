@@ -1,3 +1,4 @@
+
 import { GameEngine } from '../GameEngine';
 import { GemComponent, GemType, SpecialType } from '../../types';
 import { GRID_ROWS, GRID_COLS, GEM_SIZE, COMBO_TIME_LIMIT, LEVELS } from '../../constants';
@@ -107,6 +108,59 @@ export class MatchSystem {
     }
   }
 
+  // --- ITEM LOGIC ---
+  public async useBombItem(gemId: number) {
+      const gem = this.engine.gems.get(gemId);
+      if (!gem || this.engine.isProcessing) return;
+
+      this.engine.isProcessing = true;
+      audioService.playExplosion();
+
+      // Bomb destroys 3x3 area immediately
+      const targets: number[] = [];
+      for (let y = gem.gridY - 1; y <= gem.gridY + 1; y++) {
+          for (let x = gem.gridX - 1; x <= gem.gridX + 1; x++) {
+              if (y >= 0 && y < GRID_ROWS && x >= 0 && x < GRID_COLS) {
+                  targets.push(this.engine.grid[y][x]);
+              }
+          }
+      }
+
+      targets.forEach(id => {
+          const g = this.engine.gems.get(id);
+          if (g && !g.isMatched) {
+              g.isMatched = true;
+              this.engine.effectSystem.spawnParticles(g.visualX, g.visualY, g.type);
+              this.engine.score += 50;
+              // Trigger chains if hitting special gems
+              if (g.special !== SpecialType.NONE && g.id !== gem.id) {
+                  this.triggerSpecial(g);
+              }
+          }
+      });
+
+      this.engine.shakeAmount = 20;
+      this.engine.effectSystem.addFloatingText(gem.visualX, gem.visualY, "BOOM!", 'CRITICAL');
+      
+      await this.delay(300);
+      this.removeGems();
+      await this.applyGravity();
+      
+      // Check for follow-up matches
+      const newMatches = this.findMatches();
+      if (newMatches.length > 0) {
+          await this.delay(200);
+          await this.processMatches(newMatches);
+      } else {
+          this.engine.isProcessing = false;
+      }
+  }
+
+  public manualReshuffle() {
+      this.reshuffle();
+  }
+  // ------------------
+
   private checkSpecialCombo(a: GemComponent, b: GemComponent): boolean {
     if (a.special !== SpecialType.NONE && b.special !== SpecialType.NONE) return true;
     if (a.special === SpecialType.RAINBOW || b.special === SpecialType.RAINBOW) return true;
@@ -114,6 +168,51 @@ export class MatchSystem {
   }
 
   private async executeSpecialCombo(a: GemComponent, b: GemComponent) {
+     // Mark both as matched so they get removed
+     a.isMatched = true;
+     b.isMatched = true;
+
+     // 1. Rainbow Logic
+     if (a.special === SpecialType.RAINBOW || b.special === SpecialType.RAINBOW) {
+         const rainbow = a.special === SpecialType.RAINBOW ? a : b;
+         const other = a.special === SpecialType.RAINBOW ? b : a;
+         
+         audioService.playExplosion();
+         this.engine.effectSystem.spawnParticles(rainbow.visualX, rainbow.visualY, rainbow.type);
+
+         if (other.special === SpecialType.RAINBOW) {
+             // Double Rainbow: Clear Board
+             this.engine.gems.forEach(g => {
+                 g.isMatched = true;
+                 this.engine.effectSystem.spawnParticles(g.visualX, g.visualY, g.type);
+             });
+             this.engine.score += this.engine.gems.size * 100;
+             this.engine.effectSystem.addFloatingText(this.engine.width/2, this.engine.height/2, "MAX CLEAR!", 'CRITICAL');
+         } else {
+             // Rainbow + Gem
+             const targetType = other.type;
+             let count = 0;
+             this.engine.gems.forEach(g => {
+                 if (g.type === targetType) {
+                     g.isMatched = true;
+                     this.engine.effectSystem.spawnParticles(g.visualX, g.visualY, g.type);
+                     count++;
+                     
+                     // Chain reaction: trigger if target is also special
+                     if (g.special !== SpecialType.NONE && g.id !== rainbow.id && g.id !== other.id) {
+                         this.triggerSpecial(g); 
+                     }
+                 }
+             });
+             const totalScore = count * 50;
+             this.engine.score += totalScore;
+             this.engine.effectSystem.addFloatingText(other.visualX, other.visualY, `+${totalScore}`, 'CRITICAL');
+         }
+         return;
+     }
+
+     // 2. Other Special Combos (Bomb+Line, etc)
+     // Trigger both specials immediately
      this.triggerSpecial(a);
      this.triggerSpecial(b);
   }
@@ -174,40 +273,143 @@ export class MatchSystem {
     return Array.from(matchedSet);
   }
 
+  /**
+   * Groups connected matched gems into clusters to detect shapes (Lines vs T/L).
+   */
+  private groupMatches(matchIds: number[]): number[][] {
+    const groups: number[][] = [];
+    const visited = new Set<number>();
+    const matchSet = new Set(matchIds);
+
+    for (const id of matchIds) {
+      if (visited.has(id)) continue;
+
+      const group: number[] = [];
+      const queue: number[] = [id];
+      visited.add(id);
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        group.push(currentId);
+        const gem = this.engine.gems.get(currentId);
+        if (!gem) continue;
+
+        const neighbors = [
+          { x: gem.gridX, y: gem.gridY - 1 },
+          { x: gem.gridX, y: gem.gridY + 1 },
+          { x: gem.gridX - 1, y: gem.gridY },
+          { x: gem.gridX + 1, y: gem.gridY },
+        ];
+
+        for (const n of neighbors) {
+          if (n.x >= 0 && n.x < GRID_COLS && n.y >= 0 && n.y < GRID_ROWS) {
+            const nid = this.engine.grid[n.y][n.x];
+            if (matchSet.has(nid) && !visited.has(nid)) {
+              visited.add(nid);
+              queue.push(nid);
+            }
+          }
+        }
+      }
+      groups.push(group);
+    }
+    return groups;
+  }
+
   public async processMatches(matches: number[]) {
     // 1. Combo logic
     this.engine.combo++;
     this.engine.comboTimer = COMBO_TIME_LIMIT;
-    const multiplier = 1 + (this.engine.combo * 0.1);
+    let multiplier = 1 + (this.engine.combo * 0.1);
     
-    // 2. Detect creation of Special Gems
+    // 2. Identify and create special gems based on Groups
+    const matchGroups = this.groupMatches(matches);
+    
+    // --- MULTI-MATCH BONUS ---
+    if (matchGroups.length >= 2) {
+        multiplier += 1.0; // Bonus multiplier
+        if (this.engine.onGameEvent) this.engine.onGameEvent('multi_match');
+        // Visuals for multi-match
+        this.engine.shakeAmount = 15;
+        this.engine.effectSystem.addFloatingText(this.engine.width / 2, this.engine.height / 2, "MULTI-MATCH!", "CRITICAL");
+        audioService.playExplosion(); // Extra sound impact
+    }
+    // -------------------------
+
     const gemsToCreate: {x: number, y: number, type: GemType, special: SpecialType}[] = [];
     
-    if (matches.length >= 4) {
-        // Find center of match (approximation)
-        const firstGem = this.engine.gems.get(matches[0]);
-        if (firstGem) {
-            let special = matches.length >= 5 ? SpecialType.AREA_BLAST : SpecialType.ROW_BLAST;
-             if (Math.random() > 0.5) special = SpecialType.COL_BLAST;
-             if (matches.length >= 5 && Math.random() > 0.8) special = SpecialType.RAINBOW;
+    matchGroups.forEach(group => {
+        if (group.length < 3) return;
+        
+        const gems = group.map(id => this.engine.gems.get(id)!);
+        const xs = new Set(gems.map(g => g.gridX));
+        const ys = new Set(gems.map(g => g.gridY));
+        const isLine = xs.size === 1 || ys.size === 1;
 
-             gemsToCreate.push({
-                 x: firstGem.gridX,
-                 y: firstGem.gridY,
-                 type: special === SpecialType.RAINBOW ? GemType.WHITE : firstGem.type,
-                 special: special
-             });
+        // --- SCORING & TEXT DISPLAY ---
+        // Calculate group center for text display
+        let sumX = 0, sumY = 0;
+        gems.forEach(g => { sumX += g.visualX; sumY += g.visualY; });
+        const centerX = sumX / gems.length;
+        const centerY = sumY / gems.length;
+        
+        const groupScore = Math.floor(gems.length * 10 * multiplier);
+        
+        // Determine Text Style
+        let style: 'NORMAL' | 'COMBO' | 'CRITICAL' = 'NORMAL';
+        if (multiplier > 1.5) style = 'COMBO';
+        if (gems.length >= 5) style = 'CRITICAL';
+        
+        this.engine.effectSystem.addFloatingText(centerX, centerY, `+${groupScore}`, style);
+        // ------------------------------
+
+        // --- SPECIAL GEM LOGIC ---
+        if (group.length >= 4) {
+            let special = SpecialType.NONE;
+            let type = gems[0].type;
+
+            if (group.length === 4) {
+                 if (ys.size === 1) special = SpecialType.ROW_BLAST;
+                 else special = SpecialType.COL_BLAST;
+            } else if (group.length >= 5) {
+                 if (isLine) {
+                     special = SpecialType.RAINBOW;
+                     type = GemType.WHITE;
+                 } else {
+                     special = SpecialType.AREA_BLAST;
+                 }
+            }
+
+            if (special !== SpecialType.NONE) {
+                 // Find Spawn Position
+                 let spawnGem = gems[Math.floor(gems.length / 2)];
+                 if (special === SpecialType.AREA_BLAST) {
+                     const corner = gems.find(g => {
+                        const hasHoriz = gems.some(other => other.gridY === g.gridY && other.gridX !== g.gridX);
+                        const hasVert = gems.some(other => other.gridX === g.gridX && other.gridY !== g.gridY);
+                        return hasHoriz && hasVert;
+                     });
+                     if (corner) spawnGem = corner;
+                 }
+
+                 gemsToCreate.push({
+                     x: spawnGem.gridX,
+                     y: spawnGem.gridY,
+                     type: type,
+                     special: special
+                 });
+            }
         }
-    }
+    });
 
     // 3. Mark matched
     matches.forEach(id => {
         const g = this.engine.gems.get(id);
         if (g) {
             g.isMatched = true;
-            this.triggerSpecial(g); // If the matched gem was already special, trigger it
+            this.triggerSpecial(g);
             this.engine.effectSystem.spawnParticles(g.visualX, g.visualY, g.type);
-            this.engine.effectSystem.addFloatingText(g.visualX, g.visualY, `+${Math.floor(10 * multiplier)}`);
+            // REMOVED individual floating text call
         }
     });
 
@@ -222,7 +424,6 @@ export class MatchSystem {
 
     // 5. Create Specials
     gemsToCreate.forEach(info => {
-        // Hijack the slot
         const id = this.engine.nextId++;
         const gem: GemComponent = {
             id,
@@ -272,6 +473,8 @@ export class MatchSystem {
 
   private triggerSpecial(gem: GemComponent) {
       if (gem.special === SpecialType.NONE) return;
+      
+      gem.isMatched = true; // IMPORTANT: Ensure self is marked matched
       audioService.playExplosion();
       
       const targets: number[] = [];
@@ -287,21 +490,29 @@ export class MatchSystem {
               }
           }
       } else if (gem.special === SpecialType.RAINBOW) {
-          // Find a random color to destroy
+          // Triggered by cascade (not swap): Find a random color to destroy
           const targetType = Math.floor(Math.random() * 5); 
           this.engine.gems.forEach(g => {
               if (g.type === targetType) targets.push(g.id);
           });
       }
 
+      let blastScore = 0;
       targets.forEach(id => {
           const g = this.engine.gems.get(id);
           if (g && !g.isMatched) {
               g.isMatched = true;
               this.engine.effectSystem.spawnParticles(g.visualX, g.visualY, g.type);
+              const score = 20;
+              this.engine.score += score; 
+              blastScore += score;
               this.triggerSpecial(g); // Chain reaction
           }
       });
+      
+      if (blastScore > 0) {
+          this.engine.effectSystem.addFloatingText(gem.visualX, gem.visualY, `+${blastScore}`, 'CRITICAL');
+      }
   }
 
   private removeGems() {

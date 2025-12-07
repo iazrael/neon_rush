@@ -1,5 +1,6 @@
+
 import { GameEngine } from '../GameEngine';
-import { GemType, Particle, FloatingText } from '../../types';
+import { GemType, Particle, FloatingTextStyle } from '../../types';
 import { GEM_SIZE, COLORS } from '../../constants';
 
 export class EffectSystem {
@@ -23,9 +24,19 @@ export class EffectSystem {
     // Update Floating Text
     for (let i = this.engine.floatingTexts.length - 1; i >= 0; i--) {
         const t = this.engine.floatingTexts[i];
-        t.y -= 1;
+        
+        // Physics - Simple upward float
+        t.x += t.velocity.x;
+        t.y += t.velocity.y;
+        // Removed gravity (t.velocity.y += ...) for a clean float up
+        
         t.life--;
-        t.scale = Math.min(1.5, t.scale + 0.1);
+        
+        // Scale animation (pop in then slowly grow)
+        if (t.life > t.maxLife - 10) {
+            // Pop in logic handled in RenderSystem or implicit by initial scale
+        }
+        
         if (t.life <= 0) this.engine.floatingTexts.splice(i, 1);
     }
   }
@@ -48,13 +59,35 @@ export class EffectSystem {
       }
   }
 
-  public addFloatingText(x: number, y: number, text: string) {
+  public addFloatingText(x: number, y: number, text: string, style: FloatingTextStyle = 'NORMAL') {
+      let color = '#ffffff'; // White default
+      let targetScale = 1.0;
+      let life = 60;
+      let vy = -1.0; // Gentle upward float default
+
+      if (style === 'COMBO') {
+          color = '#fbbf24'; // Amber-400
+          targetScale = 1.3;
+          vy = -1.5;
+      } else if (style === 'CRITICAL') {
+          color = '#a855f7'; // Purple-500
+          targetScale = 1.6;
+          vy = -2.0;
+          life = 80;
+      }
+
       this.engine.floatingTexts.push({
           id: Math.random(),
-          x, y, text,
-          life: 60,
-          color: '#ffffff',
-          scale: 0.5
+          x, 
+          y, 
+          text,
+          life,
+          maxLife: life,
+          color,
+          scale: targetScale,
+          // Minimal horizontal drift, steady upward movement
+          velocity: { x: (Math.random() - 0.5) * 0.5, y: vy },
+          style
       });
   }
 }

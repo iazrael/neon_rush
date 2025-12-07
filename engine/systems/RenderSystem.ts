@@ -1,3 +1,4 @@
+
 import { GameEngine } from '../GameEngine';
 import { GEM_SIZE, GRID_COLS, GRID_ROWS, COLORS, EMOJIS } from '../../constants';
 import { SpecialType } from '../../types';
@@ -67,7 +68,7 @@ export class RenderSystem {
         }
 
         // Draw Emoji
-        ctx.font = `${GEM_SIZE * 0.7}px Arial`;
+        ctx.font = `${GEM_SIZE * 0.7}px "Segoe UI Emoji", "Apple Color Emoji", Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
@@ -99,18 +100,50 @@ export class RenderSystem {
         ctx.fill();
     });
 
-    // Draw Floating Text
+    // Draw Floating Text (Rendered last to be on top)
     this.engine.floatingTexts.forEach(t => {
         const ctx = this.engine.ctx!;
         ctx.save();
-        ctx.translate(t.x + GEM_SIZE/2, t.y);
-        ctx.scale(t.scale, t.scale); // Text is also scaled by renderScale
+        
+        // Move to position (coordinates are relative to the grid)
+        const cx = t.x + GEM_SIZE / 2; // Center horizontally on the gem
+        const cy = t.y + GEM_SIZE / 2;
+        
+        ctx.translate(cx, cy);
+        // Inverse the game scale for text to ensure it stays sharp and readable regardless of zoom? 
+        // No, keep it scaled with the game so it feels part of the world.
+        
+        // Pop-in animation scale
+        let currentScale = t.scale;
+        if (t.life > t.maxLife - 10) {
+            currentScale *= (t.maxLife - t.life) / 10;
+        }
+        
+        ctx.scale(currentScale, currentScale);
+        
+        // Fade out
+        const alpha = Math.min(1, t.life / 20);
+        ctx.globalAlpha = alpha;
+
+        // Settings based on Style
         ctx.fillStyle = t.color;
-        ctx.shadowColor = 'black';
-        ctx.shadowBlur = 4;
-        ctx.font = 'bold 24px Arial';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'black';
+        ctx.lineJoin = 'round';
+        
+        // Font
+        let fontSize = 36;
+        if (t.style === 'CRITICAL') fontSize = 52;
+        else if (t.style === 'COMBO') fontSize = 42;
+        
+        ctx.font = `900 ${fontSize}px "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Stroke then Fill
+        ctx.strokeText(t.text, 0, 0);
         ctx.fillText(t.text, 0, 0);
+        
         ctx.restore();
     });
 

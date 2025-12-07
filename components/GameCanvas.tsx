@@ -10,30 +10,40 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ engine }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameId = useRef<number>(0);
 
-  // Resize Handler
+  // Resize Handler with ResizeObserver
   useLayoutEffect(() => {
+    if (!containerRef.current) return;
+
     const handleResize = () => {
       if (containerRef.current && canvasRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
+        
         // Handle DPI
         const dpr = window.devicePixelRatio || 1;
-        canvasRef.current.width = width * dpr;
-        canvasRef.current.height = height * dpr;
-        canvasRef.current.style.width = `${width}px`;
-        canvasRef.current.style.height = `${height}px`;
         
-        engine.setCanvas(canvasRef.current);
-        // Normalize context scale for DPI
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) ctx.scale(dpr, dpr);
-        engine.resize(width, height);
+        // Only update if dimensions actually changed to prevent loops
+        if (canvasRef.current.width !== width * dpr || canvasRef.current.height !== height * dpr) {
+             canvasRef.current.width = width * dpr;
+             canvasRef.current.height = height * dpr;
+             canvasRef.current.style.width = `${width}px`;
+             canvasRef.current.style.height = `${height}px`;
+             
+             engine.setCanvas(canvasRef.current);
+             // Normalize context scale for DPI
+             const ctx = canvasRef.current.getContext('2d');
+             if (ctx) ctx.scale(dpr, dpr);
+             engine.resize(width, height);
+        }
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(containerRef.current);
+    
+    // Initial call just in case
     handleResize();
 
-    return () => window.removeEventListener('resize', handleResize);
+    return () => observer.disconnect();
   }, [engine]);
 
   // Game Loop

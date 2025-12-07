@@ -30,6 +30,13 @@ export class GameEngine {
   public movesLeft: number = 0;
   public level: number = 1;
   
+  // Inventory / Items
+  public items = {
+      bombs: 3,
+      reshuffles: 3
+  };
+  public interactionMode: 'NORMAL' | 'ITEM_BOMB' = 'NORMAL';
+  
   public shakeAmount: number = 0;
 
   // --- SYSTEMS ---
@@ -39,8 +46,9 @@ export class GameEngine {
   public effectSystem: EffectSystem;
 
   // --- EVENTS ---
-  public onScoreUpdate: ((score: number, moves: number, combo: number, comboTimer: number) => void) | null = null;
-  public onGameEvent: ((event: 'win' | 'lose' | 'reshuffle') => void) | null = null;
+  // Updated signature to include items
+  public onScoreUpdate: ((score: number, moves: number, combo: number, comboTimer: number, items: {bombs: number, reshuffles: number}) => void) | null = null;
+  public onGameEvent: ((event: 'win' | 'lose' | 'reshuffle' | 'multi_match') => void) | null = null;
 
   constructor() {
     // Initialize Systems
@@ -74,11 +82,25 @@ export class GameEngine {
   }
 
   public startLevel(levelConfig: any) {
+    this.items = { bombs: 3, reshuffles: 3 }; // Reset items per level or carry over based on design
+    this.interactionMode = 'NORMAL';
     this.matchSystem.startLevel(levelConfig);
   }
 
   public handleInput(x: number, y: number, type: 'start' | 'move' | 'end') {
     this.inputSystem.handleInput(x, y, type);
+  }
+
+  public setInteractionMode(mode: 'NORMAL' | 'ITEM_BOMB') {
+      this.interactionMode = mode;
+      this.selectedGemId = null; // Clear selection when switching modes
+  }
+
+  public useReshuffleItem() {
+      if (this.items.reshuffles > 0 && !this.isProcessing) {
+          this.items.reshuffles--;
+          this.matchSystem.manualReshuffle();
+      }
   }
 
   public update(deltaTime: number) {
@@ -120,7 +142,7 @@ export class GameEngine {
 
     // 5. Notify UI
     if (this.onScoreUpdate) {
-        this.onScoreUpdate(this.score, this.movesLeft, this.combo, this.comboTimer);
+        this.onScoreUpdate(this.score, this.movesLeft, this.combo, this.comboTimer, this.items);
     }
   }
 
