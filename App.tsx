@@ -3,7 +3,7 @@ import GameCanvas from './components/GameCanvas';
 import { GameEngine } from './engine/GameEngine';
 import { GameState, GemType } from './types';
 import { LEVELS, COMBO_TIME_LIMIT, EMOJIS } from './constants';
-import { audioService } from './services/AudioService';
+import { audioService } from './services/audioService2';
 
 // Icons
 const RefreshIcon = () => (

@@ -1,6 +1,6 @@
 import { GameEngine } from '../GameEngine';
 import { GEM_SIZE, GRID_COLS, GRID_ROWS } from '../../constants';
-import { audioService } from '../../services/AudioService';
+import { audioService } from '../../services/audioService2';
 import { SpecialType } from '../../types';
 
 export class InputSystem {
