@@ -10,46 +10,59 @@ export class RenderSystem {
     this.engine = engine;
   }
 
-  public draw() {
-    if (!this.engine.ctx) return;
+  private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
 
-    this.engine.ctx.clearRect(0, 0, this.engine.width, this.engine.height);
+  public draw(ctx: CanvasRenderingContext2D) {
+
+    ctx.clearRect(0, 0, this.engine.width, this.engine.height);
 
     const gridW = GRID_COLS * GEM_SIZE;
     const gridH = GRID_ROWS * GEM_SIZE;
 
-    this.engine.ctx.save();
+    ctx.save();
     
     // Apply Global Screen Shake
     if (this.engine.shakeAmount > 0) {
         const sx = (Math.random() - 0.5) * this.engine.shakeAmount;
         const sy = (Math.random() - 0.5) * this.engine.shakeAmount;
-        this.engine.ctx.translate(sx, sy);
+        ctx.translate(sx, sy);
     }
 
     // Apply Game Board Scaling and Centering
-    this.engine.ctx.translate(this.engine.renderOffsetX, this.engine.renderOffsetY);
-    this.engine.ctx.scale(this.engine.renderScale, this.engine.renderScale);
+    ctx.translate(this.engine.renderOffsetX, this.engine.renderOffsetY);
+    ctx.scale(this.engine.renderScale, this.engine.renderScale);
 
     // Draw Grid Background
-    this.engine.ctx.strokeStyle = '#334155';
-    this.engine.ctx.lineWidth = 1;
-    this.engine.ctx.beginPath();
-    for (let i = 0; i <= GRID_ROWS; i++) {
-        this.engine.ctx.moveTo(0, i * GEM_SIZE);
-        this.engine.ctx.lineTo(gridW, i * GEM_SIZE);
+    const padding = 2;
+    for (let y = 0; y < GRID_ROWS; y++) {
+        for (let x = 0; x < GRID_COLS; x++) {
+            ctx.fillStyle = '#1e293b'; // Slate-800
+            this.roundRect(
+                ctx, 
+                x * GEM_SIZE + padding, 
+                y * GEM_SIZE + padding, 
+                GEM_SIZE - padding * 2, 
+                GEM_SIZE - padding * 2, 
+                10
+            );
+            ctx.fill();
+        }
     }
-    for (let i = 0; i <= GRID_COLS; i++) {
-        this.engine.ctx.moveTo(i * GEM_SIZE, 0);
-        this.engine.ctx.lineTo(i * GEM_SIZE, gridH);
-    }
-    this.engine.ctx.stroke();
 
     // Draw Gems
     this.engine.gems.forEach(gem => {
         if (gem.opacity <= 0.01) return;
         
-        const ctx = this.engine.ctx!;
         ctx.save();
         const cx = gem.visualX + GEM_SIZE / 2;
         const cy = gem.visualY + GEM_SIZE / 2;
@@ -58,33 +71,63 @@ export class RenderSystem {
         ctx.scale(gem.scale, gem.scale);
         ctx.globalAlpha = gem.opacity;
 
-        // Draw Glow for Special
+        // Draw Gem Background (Rounded Tile)
+        // Reduced tilePadding from 4 to 2 to make gems appear larger
+        const tilePadding = 2;
+        const tileSize = GEM_SIZE - tilePadding * 2;
+        
+        // Background Glow/Fill
+        ctx.fillStyle = COLORS[gem.type] + '40'; // 25% opacity
         if (gem.special !== SpecialType.NONE) {
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = COLORS[gem.type];
+             ctx.shadowBlur = 15;
+             ctx.shadowColor = COLORS[gem.type];
+             ctx.fillStyle = COLORS[gem.type] + '80'; // More opacity for specials
         } else if (gem.id === this.engine.selectedGemId) {
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#ffffff';
+             ctx.shadowBlur = 20;
+             ctx.shadowColor = '#ffffff';
+             ctx.fillStyle = COLORS[gem.type] + '60';
         }
 
+        // Draw Rounded Background
+        this.roundRect(ctx, -tileSize/2, -tileSize/2, tileSize, tileSize, 12);
+        ctx.fill();
+
+        // Draw Border
+        ctx.strokeStyle = COLORS[gem.type];
+        ctx.lineWidth = 2;
+        if (gem.special !== SpecialType.NONE) ctx.lineWidth = 3;
+        ctx.stroke();
+
         // Draw Emoji
-        ctx.font = `${GEM_SIZE * 0.7}px "Segoe UI Emoji", "Apple Color Emoji", Arial`;
+        ctx.shadowBlur = 0; // Reset shadow for text to be crisp
+        // Increased font size slightly relative to GEM_SIZE
+        ctx.font = `${GEM_SIZE * 0.70}px "Segoe UI Emoji", "Apple Color Emoji", Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
         let char = EMOJIS[gem.type];
-        if (gem.special === SpecialType.ROW_BLAST) char = '↔️';
-        if (gem.special === SpecialType.COL_BLAST) char = '↕️';
-        if (gem.special === SpecialType.AREA_BLAST) char = '💣';
+        // Overlays for specials
+        let overlayChar = '';
+        if (gem.special === SpecialType.ROW_BLAST) overlayChar = '↔️';
+        if (gem.special === SpecialType.COL_BLAST) overlayChar = '↕️';
+        if (gem.special === SpecialType.AREA_BLAST) overlayChar = '💣';
         if (gem.special === SpecialType.RAINBOW) char = '🌈';
 
+        // Draw Main Icon
         if (gem.special !== SpecialType.RAINBOW && gem.special !== SpecialType.AREA_BLAST) {
-             ctx.fillText(EMOJIS[gem.type], 0, 0);
+             // Slight y-offset adjustment for emoji fonts
+             ctx.fillText(EMOJIS[gem.type], 0, 4); 
+        } else {
+             ctx.fillText(char, 0, 4);
         }
         
-        if (gem.special !== SpecialType.NONE) {
-             ctx.font = `${GEM_SIZE * 0.4}px Arial`;
-             ctx.fillText(char, 0, 0);
+        // Draw Overlay Icon for Specials
+        if (overlayChar && gem.special !== SpecialType.RAINBOW && gem.special !== SpecialType.AREA_BLAST) {
+             ctx.font = `${GEM_SIZE * 0.45}px Arial`; // Increased overlay size
+             ctx.fillStyle = 'white';
+             ctx.shadowColor = 'black';
+             ctx.shadowBlur = 4;
+             ctx.fillText(overlayChar, 0, 0);
         }
 
         ctx.restore();
@@ -92,7 +135,6 @@ export class RenderSystem {
 
     // Draw Particles
     this.engine.particles.forEach(p => {
-        const ctx = this.engine.ctx!;
         ctx.fillStyle = p.color;
         ctx.globalAlpha = p.life / p.maxLife;
         ctx.beginPath();
@@ -102,7 +144,6 @@ export class RenderSystem {
 
     // Draw Floating Text (Rendered last to be on top)
     this.engine.floatingTexts.forEach(t => {
-        const ctx = this.engine.ctx!;
         ctx.save();
         
         // Move to position (coordinates are relative to the grid)
@@ -110,8 +151,6 @@ export class RenderSystem {
         const cy = t.y + GEM_SIZE / 2;
         
         ctx.translate(cx, cy);
-        // Inverse the game scale for text to ensure it stays sharp and readable regardless of zoom? 
-        // No, keep it scaled with the game so it feels part of the world.
         
         // Pop-in animation scale
         let currentScale = t.scale;
@@ -147,6 +186,6 @@ export class RenderSystem {
         ctx.restore();
     });
 
-    this.engine.ctx.restore();
+    ctx.restore();
   }
 }

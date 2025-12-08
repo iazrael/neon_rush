@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import GameCanvas from './components/GameCanvas';
 import { GameEngine } from './engine/GameEngine';
@@ -18,8 +19,12 @@ const CloseIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 );
 
-const BombIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 8 0"/><path d="m12 8 0 8"/><path d="m4.93 4.93 14.14 14.14"/><path d="m14.07 4.93-4.14 4.14"/><path d="m14 10-4 4"/></svg> // Simplified bomb representation
+const ExitIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+);
+
+const PauseIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
 );
 
 type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
@@ -27,14 +32,17 @@ type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
 const App: React.FC = () => {
   const engineRef = useRef<GameEngine>(new GameEngine());
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  
+  // Game State
   const [score, setScore] = useState(0);
+  const [targetScore, setTargetScore] = useState(1000);
   const [moves, setMoves] = useState(0);
   const [combo, setCombo] = useState(0);
   const [comboTimer, setComboTimer] = useState(0);
   const [currentLevelIdx, setCurrentLevelIdx] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   
-  // New Menu States
+  // Menu States
   const [difficulty, setDifficulty] = useState<Difficulty>('NORMAL');
   const [showInstructions, setShowInstructions] = useState(false);
 
@@ -42,12 +50,18 @@ const App: React.FC = () => {
   const [items, setItems] = useState({ bombs: 3, reshuffles: 3 });
   const [interactionMode, setInteractionMode] = useState<'NORMAL' | 'ITEM_BOMB'>('NORMAL');
 
+  // Audio Auto-Resume
+  const resumeAudio = useCallback(() => {
+      audioService.resume();
+  }, []);
+
   // Bind Engine Callbacks
   useEffect(() => {
     const engine = engineRef.current;
     
-    engine.onScoreUpdate = (s, m, c, ct, i) => {
+    engine.onScoreUpdate = (s, t, m, c, ct, i) => {
       setScore(s);
+      setTargetScore(t);
       setMoves(m);
       setCombo(c);
       setComboTimer(ct);
@@ -66,13 +80,13 @@ const App: React.FC = () => {
           setMessage('Reshuffling...');
           setTimeout(() => setMessage(null), 2000);
       } else if (event === 'multi_match') {
-          // Additional effects handled by engine, but could trigger React UI flash here
+          // Additional effects
       }
     };
   }, []);
 
   const playUiSound = () => {
-    audioService.init(); // Ensure audio context is ready on interaction
+    audioService.init(); 
     audioService.playUiClick();
   };
 
@@ -99,11 +113,17 @@ const App: React.FC = () => {
     const config = getDifficultyConfig(LEVELS[currentLevelIdx]);
     engineRef.current.startLevel(config);
     setScore(0);
+    setTargetScore(config.targetScore);
     setMoves(config.moves);
     setItems({ bombs: 3, reshuffles: 3 });
     setGameState(GameState.PLAYING);
     setMessage(null);
   }, [currentLevelIdx, getDifficultyConfig]);
+
+  const quitGame = () => {
+      playUiSound();
+      setGameState(GameState.MENU);
+  };
 
   const nextLevel = () => {
       if (currentLevelIdx < LEVELS.length - 1) {
@@ -112,6 +132,7 @@ const App: React.FC = () => {
           const config = getDifficultyConfig(LEVELS[nextIdx]);
           engineRef.current.startLevel(config);
           setScore(0);
+          setTargetScore(config.targetScore);
           setMoves(config.moves);
           setItems({ bombs: 3, reshuffles: 3 });
           setGameState(GameState.PLAYING);
@@ -146,42 +167,89 @@ const App: React.FC = () => {
       }
   };
 
+  // --- HUD Calculations ---
+  const scoreProgress = Math.min(100, (score / targetScore) * 100);
+  const progressBarColor = scoreProgress < 30 ? 'bg-red-500' : scoreProgress < 70 ? 'bg-yellow-500' : 'bg-emerald-400';
+
   return (
-    <div className="w-full h-screen flex flex-col bg-slate-950 text-white overflow-hidden font-sans select-none">
-      {/* HUD */}
-      <div className="h-16 flex items-center justify-between px-4 bg-slate-900 border-b border-slate-700 shadow-lg z-10 relative">
-        <div className="flex flex-col">
-           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Score</span>
-           <span className="text-2xl font-mono text-cyan-400 drop-shadow-md">{score.toLocaleString()}</span>
-        </div>
-        
-        {/* Combo Bar */}
-        <div className="flex-1 mx-4 flex flex-col items-center justify-center opacity-90">
-             {combo > 1 && (
-                 <>
-                    <span className="text-yellow-400 font-black italic text-lg animate-pulse">{combo}x COMBO!</span>
-                    <div className="w-32 h-2 bg-slate-800 rounded-full overflow-hidden mt-1">
-                        <div 
-                            className="h-full bg-gradient-to-r from-yellow-500 to-red-500 transition-all duration-75 ease-linear"
-                            style={{ width: `${(comboTimer / COMBO_TIME_LIMIT) * 100}%` }}
-                        />
-                    </div>
-                 </>
-             )}
-        </div>
-
-        <div className="flex flex-col items-end">
-           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Moves</span>
-           <span className={`text-2xl font-mono drop-shadow-md ${moves < 5 ? 'text-red-500 animate-bounce' : 'text-emerald-400'}`}>{moves}</span>
-        </div>
-      </div>
-
-      {/* Target Info Bar */}
+    <div 
+        className="w-full h-screen flex flex-col bg-slate-950 text-white overflow-hidden font-sans select-none"
+        onClick={resumeAudio} 
+        onTouchStart={resumeAudio}
+    >
+      
+      {/* HUD Container - Modern App Style */}
       {gameState === GameState.PLAYING && (
-          <div className="bg-slate-800/50 backdrop-blur text-center py-1 text-xs text-slate-300 border-b border-slate-700/50 flex justify-between px-4">
-              <span>Level {LEVELS[currentLevelIdx].level} ({difficulty})</span>
-              <span>Target: {getDifficultyConfig(LEVELS[currentLevelIdx]).targetScore}</span>
-          </div>
+        <div className="absolute top-0 left-0 w-full z-20 px-3 py-3 pointer-events-none flex flex-col gap-2">
+            
+            {/* Top Row: Pause | Level Info | Progress | Moves */}
+            <div className="flex items-center gap-3 w-full max-w-lg mx-auto">
+                {/* Pause/Exit Button */}
+                <button 
+                    onClick={quitGame}
+                    className="pointer-events-auto w-10 h-10 rounded-xl bg-slate-800/80 backdrop-blur border border-white/10 flex items-center justify-center text-slate-300 active:scale-95 transition-transform"
+                >
+                    <PauseIcon />
+                </button>
+
+                {/* Main HUD Capsule */}
+                <div className="flex-1 h-12 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg flex items-center px-4 relative overflow-hidden">
+                    
+                    {/* Level Badge */}
+                    <div className="flex flex-col items-center mr-4 pr-4 border-r border-white/10">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Level</span>
+                        <span className="text-lg font-black text-white leading-none">{LEVELS[currentLevelIdx].level}</span>
+                    </div>
+
+                    {/* Progress Bar Area */}
+                    <div className="flex-1 flex flex-col justify-center gap-1">
+                        <div className="flex justify-between items-end">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Score</span>
+                            <span className="text-[10px] font-mono text-slate-400">
+                                <span className="text-white font-bold">{score}</span> / {targetScore}
+                            </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-white/5">
+                            <div 
+                                className={`h-full ${progressBarColor} shadow-[0_0_10px_currentColor] transition-all duration-500 ease-out relative`}
+                                style={{ width: `${scoreProgress}%` }}
+                            >
+                                <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Moves Capsule */}
+                <div className={`w-14 h-12 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg flex flex-col items-center justify-center ${moves < 5 ? 'border-red-500/50 bg-red-900/20' : ''}`}>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase">Moves</span>
+                    <span className={`text-xl font-black font-mono leading-none ${moves < 5 ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
+                        {moves}
+                    </span>
+                </div>
+            </div>
+
+            {/* Sub Row: Combo Bar (Appears when active) */}
+            <div className="h-6 w-full flex justify-center items-center overflow-visible">
+                {combo > 1 && (
+                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <span className="text-yellow-400 font-black italic text-lg tracking-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] animate-bounce">
+                            {combo}x COMBO
+                        </span>
+                        {/* Countdown Timer for Combo */}
+                        <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden ring-1 ring-white/10">
+                            <div 
+                                className="h-full bg-gradient-to-r from-yellow-500 to-orange-600"
+                                style={{ 
+                                    width: `${(comboTimer / COMBO_TIME_LIMIT) * 100}%`,
+                                    transition: 'width 0.1s linear' 
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
       )}
 
       {/* Game Area */}
@@ -190,8 +258,8 @@ const App: React.FC = () => {
         
         {/* Floating Message Overlay */}
         {message && gameState === GameState.PLAYING && (
-            <div className="absolute top-1/4 left-0 w-full text-center pointer-events-none z-20">
-                <span className="inline-block px-6 py-2 bg-black/60 backdrop-blur rounded-full text-white font-bold animate-bounce border border-white/20">
+            <div className="absolute top-1/3 left-0 w-full text-center pointer-events-none z-30">
+                <span className="inline-block px-8 py-3 bg-black/70 backdrop-blur-md rounded-full text-white font-bold animate-bounce border border-white/20 text-lg shadow-2xl">
                     {message}
                 </span>
             </div>
@@ -199,31 +267,39 @@ const App: React.FC = () => {
 
         {/* --- ITEMS BAR (Bottom) --- */}
         {gameState === GameState.PLAYING && (
-            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-6 pointer-events-auto pb-safe">
+            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-8 pointer-events-auto z-20 pb-[env(safe-area-inset-bottom)]">
                 <button 
                     onClick={toggleBombMode}
-                    className={`flex flex-col items-center gap-1 transition-transform active:scale-95 ${items.bombs === 0 ? 'opacity-40 grayscale' : ''}`}
+                    className={`flex flex-col items-center gap-1 transition-all active:scale-95 group ${items.bombs === 0 ? 'opacity-40 grayscale' : ''}`}
                     disabled={items.bombs === 0}
                 >
-                    <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 shadow-lg transition-all ${
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border-2 shadow-2xl transition-all relative overflow-hidden ${
                         interactionMode === 'ITEM_BOMB' 
-                        ? 'bg-red-600 border-white scale-110 animate-pulse' 
-                        : 'bg-slate-800 border-slate-600 hover:border-red-400'
+                        ? 'bg-red-600 border-white scale-110 shadow-red-900/50' 
+                        : 'bg-slate-800/90 backdrop-blur border-slate-600 hover:border-red-400'
                     }`}>
-                         <span className="text-2xl">💣</span>
+                         <span className="text-3xl relative z-10 group-hover:scale-110 transition-transform">💣</span>
+                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 skew-x-12 translate-x-[-100%] group-hover:animate-shine" />
                     </div>
-                    <span className="text-xs font-bold bg-slate-900 px-2 rounded-full border border-slate-700">{items.bombs}</span>
+                    <span className="text-[10px] font-black bg-slate-900 px-2.5 py-0.5 rounded-full border border-slate-700 text-slate-300 shadow-sm relative -mt-3 z-20">
+                        {items.bombs}
+                    </span>
                 </button>
 
                 <button 
                     onClick={useReshuffle}
-                    className={`flex flex-col items-center gap-1 transition-transform active:scale-95 ${items.reshuffles === 0 ? 'opacity-40 grayscale' : ''}`}
+                    className={`flex flex-col items-center gap-1 transition-all active:scale-95 group ${items.reshuffles === 0 ? 'opacity-40 grayscale' : ''}`}
                     disabled={items.reshuffles === 0}
                 >
-                    <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center border-2 border-slate-600 shadow-lg hover:border-blue-400 transition-colors">
-                         <RefreshIcon />
+                    <div className="w-16 h-16 bg-slate-800/90 backdrop-blur rounded-2xl flex items-center justify-center border-2 border-slate-600 shadow-2xl hover:border-blue-400 transition-all relative overflow-hidden">
+                         <div className="text-white group-hover:rotate-180 transition-transform duration-500">
+                             <RefreshIcon />
+                         </div>
+                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 skew-x-12 translate-x-[-100%] group-hover:animate-shine" />
                     </div>
-                    <span className="text-xs font-bold bg-slate-900 px-2 rounded-full border border-slate-700">{items.reshuffles}</span>
+                    <span className="text-[10px] font-black bg-slate-900 px-2.5 py-0.5 rounded-full border border-slate-700 text-slate-300 shadow-sm relative -mt-3 z-20">
+                        {items.reshuffles}
+                    </span>
                 </button>
             </div>
         )}
@@ -239,22 +315,22 @@ const App: React.FC = () => {
               <div className="absolute top-1/2 left-1/4 text-4xl text-cyan-500 blur-sm">✨</div>
            </div>
 
-          <div className="relative z-10 flex flex-col items-center max-w-md w-full">
+          <div className="relative z-10 flex flex-col items-center max-w-md w-full animate-in zoom-in duration-500">
             <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 mb-2 drop-shadow-[0_0_25px_rgba(59,130,246,0.6)] text-center tracking-tight">
               NEON RUSH
             </h1>
-            <p className="text-slate-400 text-sm tracking-widest uppercase mb-8">Cyberpunk Match-3</p>
+            <p className="text-slate-400 text-sm tracking-widest uppercase mb-8 font-bold opacity-80">Cyberpunk Match-3</p>
             
             {/* Difficulty Selector */}
-            <div className="flex bg-slate-900 p-1 rounded-xl mb-8 border border-slate-700 shadow-xl w-full">
+            <div className="flex bg-slate-900/80 backdrop-blur p-1 rounded-2xl mb-8 border border-slate-700 shadow-2xl w-full">
                 {(['EASY', 'NORMAL', 'HARD'] as Difficulty[]).map((d) => (
                     <button
                         key={d}
                         onClick={() => { playUiSound(); setDifficulty(d); }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                        className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider transition-all ${
                             difficulty === d 
-                            ? 'bg-slate-700 text-cyan-400 shadow-md' 
-                            : 'text-slate-500 hover:text-slate-300'
+                            ? 'bg-slate-700 text-cyan-400 shadow-lg scale-100 ring-1 ring-cyan-500/30' 
+                            : 'text-slate-500 hover:text-slate-300 scale-95'
                         }`}
                     >
                         {d === 'EASY' ? '简单' : d === 'NORMAL' ? '普通' : '困难'}
@@ -264,14 +340,14 @@ const App: React.FC = () => {
 
             <button 
               onClick={() => { playUiSound(); startGame(); }}
-              className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl text-xl font-bold text-white shadow-[0_0_20px_rgba(8,145,178,0.4)] hover:scale-105 active:scale-95 transition-all border border-cyan-400/30 mb-4"
+              className="w-full py-5 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-2xl text-xl font-black text-white shadow-[0_0_30px_rgba(8,145,178,0.4)] hover:scale-[1.02] active:scale-95 transition-all border border-cyan-400/30 mb-4 tracking-wide"
             >
-              开始游戏 (START)
+              开始游戏
             </button>
             
             <button
                 onClick={() => { playUiSound(); setShowInstructions(true); }}
-                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm py-2"
+                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm py-2 font-semibold"
             >
                 <InfoIcon /> 游戏玩法说明
             </button>
@@ -282,71 +358,72 @@ const App: React.FC = () => {
       {/* --- INSTRUCTIONS MODAL --- */}
       {showInstructions && (
           <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="bg-slate-900 border border-slate-700 w-full max-w-lg max-h-[90vh] rounded-2xl flex flex-col shadow-2xl">
-                  <div className="flex justify-between items-center p-4 border-b border-slate-800">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-lg max-h-[90vh] rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+                  <div className="flex justify-between items-center p-5 border-b border-slate-800 bg-slate-900">
                       <h3 className="text-xl font-bold text-cyan-400 flex items-center gap-2">
                           <InfoIcon /> 游戏指南
                       </h3>
-                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="text-slate-400 hover:text-white p-2">
+                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="text-slate-400 hover:text-white p-2 bg-slate-800 rounded-full">
                           <CloseIcon />
                       </button>
                   </div>
                   
-                  <div className="overflow-y-auto p-6 space-y-6 text-slate-200">
+                  <div className="overflow-y-auto p-6 space-y-6 text-slate-200 bg-slate-950/50">
                       <section>
-                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-cyan-500 pl-3">基础玩法</h4>
-                          <p className="text-sm text-slate-400 leading-relaxed">
-                              滑动手指交换相邻的宝石。当 <span className="text-white font-bold">3个或以上</span> 同色宝石连成一直线（横向或纵向）时，它们将被消除并得分。
+                          <h4 className="text-sm font-black text-slate-500 uppercase mb-2 tracking-widest">基础玩法</h4>
+                          <p className="text-sm text-slate-400 leading-relaxed bg-slate-900 p-3 rounded-lg border border-slate-800">
+                              滑动手指交换相邻的宝石。当 <span className="text-cyan-400 font-bold">3个或以上</span> 同色宝石连成一直线（横向或纵向）时，它们将被消除并得分。
                           </p>
                       </section>
                       <section>
-                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-yellow-500 pl-3">双组奖励</h4>
-                          <p className="text-sm text-slate-400 leading-relaxed">
-                              一次交换如果造成 <span className="text-white font-bold">2组或以上</span> 消除，将触发 "MULTI-MATCH" 奖励，得分翻倍！
-                          </p>
-                      </section>
-                      <section>
-                          <h4 className="text-lg font-bold text-white mb-2 border-l-4 border-red-500 pl-3">强力道具</h4>
-                          <p className="text-sm text-slate-400 leading-relaxed">
-                              底部栏可以使用限量道具：<br/>
-                              💣 <b>定点炸弹</b>：点击激活后，再次点击棋盘任意位置，炸毁周围区域。<br/>
-                              🔄 <b>重新洗牌</b>：当局面僵持时，打乱所有宝石位置。
-                          </p>
+                          <h4 className="text-sm font-black text-slate-500 uppercase mb-2 tracking-widest">强力道具</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-col items-center text-center">
+                                  <div className="text-2xl mb-1">💣</div>
+                                  <div className="text-xs font-bold text-white">定点炸弹</div>
+                                  <div className="text-[10px] text-slate-500">炸毁任意 3x3 区域</div>
+                              </div>
+                              <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-col items-center text-center">
+                                  <div className="text-2xl mb-1 text-blue-400"><RefreshIcon /></div>
+                                  <div className="text-xs font-bold text-white">重新洗牌</div>
+                                  <div className="text-[10px] text-slate-500">重排所有宝石</div>
+                              </div>
+                          </div>
                       </section>
 
                       <section>
-                          <h4 className="text-lg font-bold text-white mb-3 border-l-4 border-purple-500 pl-3">特殊宝石 & 机制</h4>
-                          <div className="space-y-4">
-                              <div className="bg-slate-800/50 p-3 rounded-lg flex items-center gap-4">
-                                  <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">↔️</div>
+                          <h4 className="text-sm font-black text-slate-500 uppercase mb-3 tracking-widest">特殊宝石配方</h4>
+                          <div className="space-y-3">
+                              <div className="bg-slate-900/80 p-3 rounded-xl flex items-center gap-4 border border-slate-800">
+                                  <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">↔️</div>
                                   <div>
-                                      <div className="font-bold text-yellow-400">直线爆炸 (4连消)</div>
-                                      <div className="text-xs text-slate-400">4个宝石连成一线生成。消除时会炸毁整行或整列的宝石。</div>
+                                      <div className="font-bold text-yellow-400 text-sm">直线爆炸</div>
+                                      <div className="text-[11px] text-slate-400">4个宝石连成一线生成。消除整行或整列。</div>
                                   </div>
                               </div>
                               
-                              <div className="bg-slate-800/50 p-3 rounded-lg flex items-center gap-4">
-                                  <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">💣</div>
+                              <div className="bg-slate-900/80 p-3 rounded-xl flex items-center gap-4 border border-slate-800">
+                                  <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">💣</div>
                                   <div>
-                                      <div className="font-bold text-red-400">区域炸弹 (T/L型消除)</div>
-                                      <div className="text-xs text-slate-400">以T型或L型匹配5个宝石生成。爆炸时消除周围 3x3 区域的所有宝石。</div>
+                                      <div className="font-bold text-red-400 text-sm">区域炸弹</div>
+                                      <div className="text-[11px] text-slate-400">T型或L型(5个)生成。爆炸消除周围区域。</div>
                                   </div>
                               </div>
 
-                              <div className="bg-slate-800/50 p-3 rounded-lg flex items-center gap-4">
-                                  <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">🌈</div>
+                              <div className="bg-slate-900/80 p-3 rounded-xl flex items-center gap-4 border border-slate-800">
+                                  <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">🌈</div>
                                   <div>
-                                      <div className="font-bold text-white">彩虹核心 (5连直线)</div>
-                                      <div className="text-xs text-slate-400">5个宝石连成一线生成。点击它并与任意宝石交换，将消除全屏所有该颜色的宝石！</div>
+                                      <div className="font-bold text-white text-sm">彩虹核心</div>
+                                      <div className="text-[11px] text-slate-400">5个连成一线生成。交换消除全屏同色！</div>
                                   </div>
                               </div>
                           </div>
                       </section>
                   </div>
                   
-                  <div className="p-4 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl">
-                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold transition-colors">
-                          明白了 (Got it)
+                  <div className="p-4 border-t border-slate-800 bg-slate-900">
+                      <button onClick={() => { playUiSound(); setShowInstructions(false); }} className="w-full py-3 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-white font-bold transition-colors shadow-lg shadow-cyan-900/20">
+                          开始战斗 (Ready)
                       </button>
                   </div>
               </div>
@@ -355,43 +432,44 @@ const App: React.FC = () => {
 
       {/* GAME OVER Overlay */}
       {gameState === GameState.GAME_OVER && (
-        <div className="absolute inset-0 bg-red-950/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300">
+        <div className="absolute inset-0 bg-red-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300">
           <h2 className="text-5xl font-black text-white mb-2 drop-shadow-lg">任务失败</h2>
-          <p className="text-red-300 mb-8 uppercase tracking-widest font-bold">Game Over</p>
+          <p className="text-red-300 mb-8 uppercase tracking-widest font-bold opacity-80">Game Over</p>
           
-          <div className="bg-black/40 p-6 rounded-xl border border-red-500/30 mb-8 text-center min-w-[200px]">
-              <div className="text-sm text-slate-400 uppercase">Final Score</div>
-              <div className="text-4xl font-mono text-white font-bold">{score.toLocaleString()}</div>
+          <div className="bg-black/40 p-8 rounded-3xl border border-red-500/30 mb-8 text-center min-w-[240px] shadow-2xl">
+              <div className="text-xs text-slate-400 uppercase tracking-widest mb-2">Final Score</div>
+              <div className="text-5xl font-mono text-white font-bold">{score.toLocaleString()}</div>
           </div>
 
-          <button 
-            onClick={() => { playUiSound(); restartLevel(); }}
-            className="flex items-center gap-2 px-8 py-4 bg-white text-red-900 rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 shadow-xl"
-          >
-            <RefreshIcon /> 再试一次 (Retry)
-          </button>
-          
-          <button onClick={() => { playUiSound(); setGameState(GameState.MENU); }} className="mt-4 text-slate-400 text-sm underline">
-              返回主菜单
-          </button>
+          <div className="flex gap-4">
+              <button onClick={() => { playUiSound(); setGameState(GameState.MENU); }} className="px-6 py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold hover:bg-slate-700 transition-colors">
+                  退出
+              </button>
+              <button 
+                onClick={() => { playUiSound(); restartLevel(); }}
+                className="flex items-center gap-2 px-8 py-4 bg-white text-red-900 rounded-2xl font-bold text-lg hover:bg-gray-100 transition-transform active:scale-95 shadow-xl"
+              >
+                <RefreshIcon /> 再试一次
+              </button>
+          </div>
         </div>
       )}
 
       {/* VICTORY Overlay */}
       {gameState === GameState.LEVEL_COMPLETE && (
-        <div className="absolute inset-0 bg-emerald-950/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className="text-6xl mb-4 animate-bounce">🏆</div>
+        <div className="absolute inset-0 bg-emerald-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300">
+          <div className="text-7xl mb-6 animate-bounce filter drop-shadow-lg">🏆</div>
           <h2 className="text-5xl font-black text-white mb-2 drop-shadow-lg text-center">关卡完成!</h2>
-          <p className="text-emerald-300 mb-8 uppercase tracking-widest font-bold">Level Complete</p>
+          <p className="text-emerald-300 mb-8 uppercase tracking-widest font-bold opacity-80">Level Complete</p>
           
-          <div className="bg-black/40 p-6 rounded-xl border border-emerald-500/30 mb-8 text-center min-w-[200px]">
-              <div className="text-sm text-slate-400 uppercase">Score</div>
-              <div className="text-4xl font-mono text-emerald-400 font-bold">{score.toLocaleString()}</div>
+          <div className="bg-black/40 p-8 rounded-3xl border border-emerald-500/30 mb-8 text-center min-w-[240px] shadow-2xl">
+              <div className="text-xs text-slate-400 uppercase tracking-widest mb-2">Score</div>
+              <div className="text-5xl font-mono text-emerald-400 font-bold">{score.toLocaleString()}</div>
           </div>
 
           <button 
             onClick={() => { playUiSound(); nextLevel(); }}
-            className="px-12 py-4 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl text-xl font-bold shadow-[0_0_20px_rgba(16,185,129,0.5)] hover:scale-105 active:scale-95 transition-transform"
+            className="px-12 py-5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-2xl text-xl font-bold shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-105 active:scale-95 transition-transform"
           >
             下一关 (Next Level)
           </button>

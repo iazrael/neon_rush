@@ -1,3 +1,4 @@
+
 import { GemComponent, Particle, FloatingText, SpecialType } from '../types';
 import { GRID_ROWS, GRID_COLS, GEM_SIZE, ANIMATION_SPEED } from '../constants';
 import { MatchSystem } from './systems/MatchSystem';
@@ -25,6 +26,7 @@ export class GameEngine {
   public isProcessing: boolean = false;
   public selectedGemId: number | null = null;
   public score: number = 0;
+  public targetScore: number = 1000; // New: track target score inside engine
   public combo: number = 0;
   public comboTimer: number = 0;
   public movesLeft: number = 0;
@@ -46,8 +48,8 @@ export class GameEngine {
   public effectSystem: EffectSystem;
 
   // --- EVENTS ---
-  // Updated signature to include items
-  public onScoreUpdate: ((score: number, moves: number, combo: number, comboTimer: number, items: {bombs: number, reshuffles: number}) => void) | null = null;
+  // Updated signature to include targetScore
+  public onScoreUpdate: ((score: number, targetScore: number, moves: number, combo: number, comboTimer: number, items: {bombs: number, reshuffles: number}) => void) | null = null;
   public onGameEvent: ((event: 'win' | 'lose' | 'reshuffle' | 'multi_match') => void) | null = null;
 
   constructor() {
@@ -70,20 +72,35 @@ export class GameEngine {
 
     const gridW = GRID_COLS * GEM_SIZE;
     const gridH = GRID_ROWS * GEM_SIZE;
-    const paddingX = 20;
-    const paddingY = 40; 
     
-    const availableW = width - paddingX;
-    const availableH = height - paddingY;
+    // Layout Configuration
+    // Reduced paddingX to maximize width usage
+    const paddingX = 4; 
     
+    // Reserved spaces for UI elements
+    const topReserved = 130;    // Top HUD
+    const bottomReserved = 160; // Bottom Item Bar
+    
+    const availableW = width - paddingX * 2;
+    // Ensure we have a sane minimum height calculation
+    const availableH = Math.max(300, height - topReserved - bottomReserved);
+    
+    // Calculate Scale: Prioritize width fit, but clamped by height availability
     this.renderScale = Math.min(availableW / gridW, availableH / gridH);
+    
+    // Center Horizontally
     this.renderOffsetX = (width - gridW * this.renderScale) / 2;
-    this.renderOffsetY = (height - gridH * this.renderScale) / 2;
+    
+    // Position Vertically
+    // We add topReserved, but we can center it slightly within the available 'middle' space
+    // to look balanced.
+    this.renderOffsetY = topReserved + (availableH - gridH * this.renderScale) / 2;
   }
 
   public startLevel(levelConfig: any) {
-    this.items = { bombs: 3, reshuffles: 3 }; // Reset items per level or carry over based on design
+    this.items = { bombs: 3, reshuffles: 3 }; 
     this.interactionMode = 'NORMAL';
+    this.targetScore = levelConfig.targetScore;
     this.matchSystem.startLevel(levelConfig);
   }
 
@@ -93,7 +110,7 @@ export class GameEngine {
 
   public setInteractionMode(mode: 'NORMAL' | 'ITEM_BOMB') {
       this.interactionMode = mode;
-      this.selectedGemId = null; // Clear selection when switching modes
+      this.selectedGemId = null; 
   }
 
   public useReshuffleItem() {
@@ -118,7 +135,7 @@ export class GameEngine {
         if (this.shakeAmount < 0.5) this.shakeAmount = 0;
     }
 
-    // 3. Update Gems (Lerp Animation) - Kept simple in Engine or move to PhysicsSystem
+    // 3. Update Gems (Lerp Animation)
     this.gems.forEach(gem => {
       const targetX = gem.gridX * GEM_SIZE;
       const targetY = gem.gridY * GEM_SIZE;
@@ -142,11 +159,11 @@ export class GameEngine {
 
     // 5. Notify UI
     if (this.onScoreUpdate) {
-        this.onScoreUpdate(this.score, this.movesLeft, this.combo, this.comboTimer, this.items);
+        this.onScoreUpdate(this.score, this.targetScore, this.movesLeft, this.combo, this.comboTimer, this.items);
     }
   }
 
   public draw() {
-    this.renderSystem.draw();
+    this.renderSystem.draw(this.ctx);
   }
 }

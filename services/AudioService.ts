@@ -1,3 +1,4 @@
+
 class AudioService {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -21,8 +22,15 @@ class AudioService {
     this.enabled = true;
   }
 
+  public async resume() {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+  }
+
   public playUiClick() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
@@ -42,6 +50,7 @@ class AudioService {
 
   public playSelect() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
@@ -60,6 +69,7 @@ class AudioService {
 
   public playSwap() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
@@ -78,6 +88,7 @@ class AudioService {
 
   public playMatch(combo: number) {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
@@ -99,6 +110,7 @@ class AudioService {
 
   public playExplosion() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const bufferSize = this.ctx.sampleRate * 0.5; // 0.5 sec
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -127,6 +139,7 @@ class AudioService {
 
   public playInvalid() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
@@ -145,6 +158,7 @@ class AudioService {
 
   public playWin() {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
+    this.resume();
     const now = this.ctx.currentTime;
     
     [0, 0.2, 0.4].forEach((delay, i) => {
