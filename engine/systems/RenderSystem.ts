@@ -77,15 +77,15 @@ export class RenderSystem {
         const tileSize = GEM_SIZE - tilePadding * 2;
         
         // Background Glow/Fill
-        ctx.fillStyle = COLORS[gem.type] + '40'; // 25% opacity
+        ctx.fillStyle = COLORS[gem.type] + '80'; // Increased opacity to 50%
         if (gem.special !== SpecialType.NONE) {
              ctx.shadowBlur = 15;
              ctx.shadowColor = COLORS[gem.type];
-             ctx.fillStyle = COLORS[gem.type] + '80'; // More opacity for specials
+             ctx.fillStyle = COLORS[gem.type] + 'C0'; // More opacity for specials (75%)
         } else if (gem.id === this.engine.selectedGemId) {
              ctx.shadowBlur = 20;
              ctx.shadowColor = '#ffffff';
-             ctx.fillStyle = COLORS[gem.type] + '60';
+             ctx.fillStyle = COLORS[gem.type] + 'A0';
         }
 
         // Draw Rounded Background
@@ -114,20 +114,20 @@ export class RenderSystem {
         if (gem.special === SpecialType.RAINBOW) char = '🌈';
 
         // Draw Main Icon
-        if (gem.special !== SpecialType.RAINBOW && gem.special !== SpecialType.AREA_BLAST) {
-             // Slight y-offset adjustment for emoji fonts
-             ctx.fillText(EMOJIS[gem.type], 0, 4); 
+        // For bombs, show a bomb emoji instead of the gem emoji
+        if (gem.special === SpecialType.AREA_BLAST) {
+            ctx.fillText('💣', 0, 4);
         } else {
-             ctx.fillText(char, 0, 4);
+            ctx.fillText(char, 0, 4);
         }
         
-        // Draw Overlay Icon for Specials
+        // Draw Overlay Icon for Specials (except Rainbow and Bomb which have their own icons)
         if (overlayChar && gem.special !== SpecialType.RAINBOW && gem.special !== SpecialType.AREA_BLAST) {
-             ctx.font = `${GEM_SIZE * 0.45}px Arial`; // Increased overlay size
-             ctx.fillStyle = 'white';
-             ctx.shadowColor = 'black';
-             ctx.shadowBlur = 4;
-             ctx.fillText(overlayChar, 0, 0);
+            ctx.font = `${GEM_SIZE * 0.45}px Arial`; // Increased overlay size
+            ctx.fillStyle = 'white';
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 4;
+            ctx.fillText(overlayChar, 0, 0);
         }
 
         ctx.restore();

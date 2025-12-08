@@ -267,7 +267,7 @@ const App: React.FC = () => {
 
         {/* --- ITEMS BAR (Bottom) --- */}
         {gameState === GameState.PLAYING && (
-            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-8 pointer-events-auto z-20 pb-[env(safe-area-inset-bottom)]">
+            <div className="absolute bottom-0 left-0 w-full flex justify-center gap-8 pointer-events-auto z-20 pb-[env(safe-area-inset-bottom)]">
                 <button 
                     onClick={toggleBombMode}
                     className={`flex flex-col items-center gap-1 transition-all active:scale-95 group ${items.bombs === 0 ? 'opacity-40 grayscale' : ''}`}
